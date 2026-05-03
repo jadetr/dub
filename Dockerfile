@@ -42,6 +42,12 @@ COPY . .
 # Bump Node heap to 6GB — the Next 15 build OOMs on the default ~1.7GB cap.
 ENV NODE_OPTIONS="--max-old-space-size=6144"
 
+# Mark this as a self-hosted build:
+#  - next.config.js switches `output` to "standalone" (needed by the runner
+#    stage which copies .next/standalone)
+#  - graceful generateStaticParams fallbacks return [] when DB is unreachable
+ENV SELF_HOSTED=1
+
 # Build-time stubs for optional SaaS SDKs that crash at module-load when their
 # env vars are unset (Next collects page data by importing every route). At
 # runtime these are overridden by real values (or stay unset and the lazy

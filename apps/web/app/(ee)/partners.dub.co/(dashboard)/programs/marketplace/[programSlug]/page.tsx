@@ -19,20 +19,33 @@ import { MarketplaceProgramHeaderControls } from "./header-controls";
 export const revalidate = 3600; // 1 hour
 
 export async function generateStaticParams() {
-  const programs = await prisma.program.findMany({
-    where: {
-      addedToMarketplaceAt: {
-        not: null,
+  try {
+    const programs = await prisma.program.findMany({
+      where: {
+        addedToMarketplaceAt: {
+          not: null,
+        },
       },
-    },
-    select: {
-      slug: true,
-    },
-  });
+      select: {
+        slug: true,
+      },
+    });
 
-  return programs.map((program) => ({
-    programSlug: program.slug,
-  }));
+    return programs.map((program) => ({
+      programSlug: program.slug,
+    }));
+  } catch (err) {
+    // DB unreachable at build time (eg self-hosted docker build) — render
+    // dynamically at runtime instead of failing the build.
+    if (process.env.SELF_HOSTED) {
+      console.warn(
+        "[marketplace generateStaticParams] DB unavailable, returning []:",
+        err instanceof Error ? err.message : err,
+      );
+      return [];
+    }
+    throw err;
+  }
 }
 
 export default async function MarketplaceProgramPage(props: {
