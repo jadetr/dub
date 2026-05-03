@@ -17,7 +17,7 @@ COPY apps/worker/package.json apps/worker/
 
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm install --frozen-lockfile \
-      --filter=web... --filter=@dub/worker...
+      --filter=!dub-hubspot-app --filter=!com.example.dub --filter=!dub-cli
 
 # ----- Stage 2: builder (web) ------------------------------------------------
 FROM node:20-bookworm-slim AS builder
