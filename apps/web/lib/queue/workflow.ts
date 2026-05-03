@@ -86,23 +86,35 @@ function makeContext<T>(
   };
 }
 
+interface ServeOptions<T> {
+  initialPayloadParser?: (requestPayload: string) => T;
+}
+
 /**
  * `serve()` matches the @upstash/workflow/nextjs export. The route handler is
  * triggered via plain HTTP POST with a JSON body; we run all steps inline and
  * return 200.
  */
-export function serve<T = unknown>(handler: Handler<T>) {
+export function serve<T = unknown>(
+  handler: Handler<T>,
+  options?: ServeOptions<T>,
+) {
   if (!SELF_HOSTED) {
     // Defer to the real package on Vercel/Dub.co.
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const real = require("@upstash/workflow/nextjs");
-    return real.serve(handler);
+    return real.serve(handler, options);
   }
 
   const POST = async (req: Request) => {
     let payload: T;
     try {
-      payload = (await req.json()) as T;
+      const raw = await req.text();
+      if (options?.initialPayloadParser) {
+        payload = options.initialPayloadParser(raw);
+      } else {
+        payload = (raw ? JSON.parse(raw) : {}) as T;
+      }
     } catch {
       payload = {} as T;
     }

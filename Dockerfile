@@ -39,6 +39,8 @@ COPY . .
 # `web` imports compiled output (dist/**) from @dub/ui, @dub/utils, @dub/email,
 # etc. so their tsup builds must run first. turbo.json's `^build` dependency
 # makes `turbo build --filter=web...` build deps in the right order.
+# Bump Node heap to 6GB — the Next 15 build OOMs on the default ~1.7GB cap.
+ENV NODE_OPTIONS="--max-old-space-size=6144"
 RUN pnpm --filter=@dub/prisma generate
 RUN pnpm exec turbo run build --filter=web...
 
