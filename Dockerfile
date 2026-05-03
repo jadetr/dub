@@ -1,9 +1,11 @@
-# syntax=docker/dockerfile:1.7
-
 # ----- Stage 1: deps ---------------------------------------------------------
 FROM node:20-bookworm-slim AS deps
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY tests/docker/extra-ca/ /usr/local/share/ca-certificates/extra/
+RUN if ls /usr/local/share/ca-certificates/extra/*.crt >/dev/null 2>&1; then update-ca-certificates; fi
+ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 WORKDIR /repo
 
@@ -21,6 +23,10 @@ FROM node:20-bookworm-slim AS builder
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 ENV NEXT_TELEMETRY_DISABLED=1
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY tests/docker/extra-ca/ /usr/local/share/ca-certificates/extra/
+RUN if ls /usr/local/share/ca-certificates/extra/*.crt >/dev/null 2>&1; then update-ca-certificates; fi
+ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 WORKDIR /repo
 
@@ -29,9 +35,12 @@ COPY --from=deps /repo/apps/web/node_modules ./apps/web/node_modules
 COPY --from=deps /repo/packages ./packages
 COPY . .
 
-# Generate prisma client + build standalone Next app
+# Generate prisma client + build workspace deps + build standalone Next app.
+# `web` imports compiled output (dist/**) from @dub/ui, @dub/utils, @dub/email,
+# etc. so their tsup builds must run first. turbo.json's `^build` dependency
+# makes `turbo build --filter=web...` build deps in the right order.
 RUN pnpm --filter=@dub/prisma generate
-RUN pnpm --filter=web build
+RUN pnpm exec turbo run build --filter=web...
 
 # ----- Stage 3: runner (web) -------------------------------------------------
 FROM node:20-bookworm-slim AS web
@@ -71,6 +80,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
+COPY tests/docker/extra-ca/ /usr/local/share/ca-certificates/extra/
+RUN if ls /usr/local/share/ca-certificates/extra/*.crt >/dev/null 2>&1; then update-ca-certificates; fi
+ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 
 COPY --from=deps /repo/node_modules ./node_modules

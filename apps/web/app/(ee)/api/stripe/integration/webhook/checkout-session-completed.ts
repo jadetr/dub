@@ -301,7 +301,7 @@ export async function checkoutSessionCompleted(
         ...leadEventData,
         workspace_id: leadEventData.workspace_id || customer.projectId, // in case for some reason the lead event doesn't have workspace_id
       };
-      linkId = leadEvent.link_id;
+      linkId = leadEventData.link_id;
     }
   } else {
     return {
@@ -386,6 +386,15 @@ export async function checkoutSessionCompleted(
       charge.currency = convertedCurrency;
       chargeAmountTotal = convertedAmount;
     }
+  }
+
+  // Every reachable branch above either assigned leadEvent or returned, but
+  // TS can't prove that across the nested if/else. Assert it here.
+  if (!leadEvent) {
+    return {
+      response: `No lead event resolved for Stripe checkout session, skipping...`,
+      workspaceId: workspace.id,
+    };
   }
 
   const saleData = {

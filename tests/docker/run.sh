@@ -65,6 +65,25 @@ done
 echo "::: building test image"
 docker compose "${COMPOSE_FILES[@]}" "${PROFILE[@]}" build tests
 
+# Optional: bring up the web tier so e2e/web-smoke.test.ts runs against a live
+# Next.js process. Triggered with WITH_WEB=1. Slow (full app build), so off by
+# default in CI.
+if [ "${WITH_WEB:-0}" = "1" ]; then
+  echo "::: building web image"
+  docker compose "${COMPOSE_FILES[@]}" build web
+  echo "::: starting web (depends on migrate, redis, srh, clickhouse)"
+  docker compose "${COMPOSE_FILES[@]}" up -d web
+  echo "::: waiting for web to answer on /api"
+  for i in $(seq 1 60); do
+    if docker compose "${COMPOSE_FILES[@]}" exec -T web sh -c \
+       'wget -qO- --tries=1 --timeout=2 http://localhost:8888/api >/dev/null 2>&1'; then
+      break
+    fi
+    sleep 2
+  done
+  export WEB_URL=http://web:8888
+fi
+
 case "$SUITE" in
   unit)
     docker compose "${COMPOSE_FILES[@]}" "${PROFILE[@]}" run --rm tests pnpm test:unit
