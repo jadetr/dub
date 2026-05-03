@@ -103,6 +103,22 @@ class SelfHostedQStash {
     return results;
   }
 
+  // `client.queue({ queueName })` mirrors @upstash/qstash. The returned
+  // object exposes `enqueueJSON()` matching publishJSON's shape; in self-
+  // hosted mode the queueName is ignored and jobs land in the shared bull
+  // queue keyed by URL. `upsert()` is a no-op (BullMQ has no concept).
+  queue({ queueName: _queueName }: { queueName: string }) {
+    const self = this;
+    return {
+      async enqueueJSON(input: Parameters<SelfHostedQStash["publishJSON"]>[0]) {
+        return self.publishJSON(input);
+      },
+      async upsert() {
+        return { ok: true } as const;
+      },
+    };
+  }
+
   schedules = {
     create: async (input: { destination: string; cron: string; body?: unknown }) => {
       // BullMQ repeatable jobs ~ QStash schedules.
