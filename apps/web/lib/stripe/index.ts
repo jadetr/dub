@@ -35,11 +35,19 @@ const secretMap: Record<StripeMode, string | undefined> = {
 export const stripeAppClient = ({ mode }: { mode?: StripeMode }) => {
   const appSecretKey = secretMap[mode ?? "live"];
 
-  return new Stripe(appSecretKey!, {
-    apiVersion: "2025-05-28.basil",
-    appInfo: {
-      name: "Dub.co",
-      version: "0.1.0",
-    },
+  if (!appSecretKey) {
+    return new Proxy({} as Stripe, {
+      get() {
+        throw new Error(
+          `STRIPE_APP_SECRET_KEY for mode "${mode ?? "live"}" is not set; ` +
+            `Stripe Integration App is unavailable.`,
+        );
+      },
+    });
+  }
+
+  return new Stripe(appSecretKey, {
+    apiVersion: STRIPE_API_VERSION,
+    appInfo: STRIPE_APP_INFO,
   });
 };
