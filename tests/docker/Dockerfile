@@ -9,6 +9,16 @@ ENV PATH=$PNPM_HOME:$PATH
 ENV NODE_ENV=test
 
 # node:20-bookworm-slim ships with ca-certificates already.
+# Allow injecting extra CA certs (eg corporate TLS-intercepting egress proxy)
+# by dropping .crt files into tests/docker/extra-ca/ before build.
+COPY tests/docker/extra-ca/ /usr/local/share/ca-certificates/extra/
+RUN if ls /usr/local/share/ca-certificates/extra/*.crt >/dev/null 2>&1; then \
+      apt-get update && apt-get install -y --no-install-recommends ca-certificates && \
+      update-ca-certificates && \
+      rm -rf /var/lib/apt/lists/*; \
+    fi
+ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+
 RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 
 WORKDIR /repo

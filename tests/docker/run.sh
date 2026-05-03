@@ -30,6 +30,14 @@ export NEXTAUTH_SECRET CRON_SECRET ENCRYPTION_KEY UNSUBSCRIBE_TOKEN_SECRET \
 COMPOSE_FILES=(-f docker-compose.yml -f tests/docker/docker-compose.test.yml)
 PROFILE=(--profile test)
 
+# Stage host-trusted extra CA certs into the build context so the test image
+# can talk through TLS-intercepting egress proxies (corp/CI sandboxes).
+mkdir -p tests/docker/extra-ca
+if [ -d /usr/local/share/ca-certificates ]; then
+  find /usr/local/share/ca-certificates -maxdepth 1 -name '*.crt' \
+    -exec cp -f {} tests/docker/extra-ca/ \; 2>/dev/null || true
+fi
+
 cleanup() {
   echo "::: tearing down compose stack" >&2
   docker compose "${COMPOSE_FILES[@]}" "${PROFILE[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
