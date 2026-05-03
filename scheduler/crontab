@@ -1,0 +1,26 @@
+# Self-hosted Dub cron schedule.
+# Format: <m> <h> <dom> <mon> <dow> <command>
+# Each command POSTs to the web tier with a CRON_SECRET bearer token; route
+# handlers (`verifyVercelSignature`) accept this exact header when SELF_HOSTED=1.
+
+# Helper: every command is `curl -s -X POST -H "Authorization: Bearer $CRON_SECRET" $WEB_URL<path>`
+# We expand it inline because supercronic does not source a shell rc.
+
+0 * * * *      curl -fsS -X GET -H "Authorization: Bearer $CRON_SECRET" $WEB_URL/api/cron/domains/verify
+0 * * * *      curl -fsS -X GET -H "Authorization: Bearer $CRON_SECRET" $WEB_URL/api/cron/email-domains/verify
+0 8 * * *      curl -fsS -X GET -H "Authorization: Bearer $CRON_SECRET" $WEB_URL/api/cron/domains/renewal-reminders
+0 8 * * *      curl -fsS -X GET -H "Authorization: Bearer $CRON_SECRET" $WEB_URL/api/cron/domains/renewal-payments
+* * * * *      curl -fsS -X GET -H "Authorization: Bearer $CRON_SECRET" $WEB_URL/api/cron/streams/update-workspace-clicks
+* * * * *      curl -fsS -X GET -H "Authorization: Bearer $CRON_SECRET" $WEB_URL/api/cron/streams/update-workspace-links-usage
+*/2 * * * *    curl -fsS -X GET -H "Authorization: Bearer $CRON_SECRET" $WEB_URL/api/cron/streams/update-partner-stats
+0 13 1 * *     curl -fsS -X GET -H "Authorization: Bearer $CRON_SECRET" $WEB_URL/api/cron/partner-program-summary
+0 9 * * *      curl -fsS -X GET -H "Authorization: Bearer $CRON_SECRET" $WEB_URL/api/cron/pending-applications-summary
+0 * * * *      curl -fsS -X GET -H "Authorization: Bearer $CRON_SECRET" $WEB_URL/api/cron/trial-emails
+0 * * * *      curl -fsS -X GET -H "Authorization: Bearer $CRON_SECRET" $WEB_URL/api/cron/payouts/aggregate-due-commissions
+0 0,12 * * *   curl -fsS -X GET -H "Authorization: Bearer $CRON_SECRET" $WEB_URL/api/cron/trigger-withdrawal
+40 0,8,12,20 * * * curl -fsS -X GET -H "Authorization: Bearer $CRON_SECRET" $WEB_URL/api/cron/trigger-backup
+0 12 * * *     curl -fsS -X GET -H "Authorization: Bearer $CRON_SECRET" $WEB_URL/api/cron/payouts/force-withdrawals
+0 14 * * *     curl -fsS -X GET -H "Authorization: Bearer $CRON_SECRET" $WEB_URL/api/cron/payouts/reminders/partners
+0 13 25-31,1-5 * * curl -fsS -X GET -H "Authorization: Bearer $CRON_SECRET" $WEB_URL/api/cron/payouts/reminders/program-owners
+0 * * * *      curl -fsS -X GET -H "Authorization: Bearer $CRON_SECRET" $WEB_URL/api/cron/bounties/queue-sync-social-metrics
+0 2 * * *      curl -fsS -X GET -H "Authorization: Bearer $CRON_SECRET" $WEB_URL/api/cron/sitemaps/queue

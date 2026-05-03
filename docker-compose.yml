@@ -1,0 +1,231 @@
+# Self-hosted Dub. See docs/self-hosting.md.
+# Runs the entire app on localhost or a single VM. External SaaS dependencies
+# kept by design: Resend (email) and S3-compatible storage (file uploads).
+
+x-web-env: &web-env
+  NODE_ENV: production
+  SELF_HOSTED: "1"
+
+  # Public app config – override these for your domain.
+  NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-Dub}
+  NEXT_PUBLIC_APP_DOMAIN: ${NEXT_PUBLIC_APP_DOMAIN:-localhost}
+  NEXT_PUBLIC_APP_SHORT_DOMAIN: ${NEXT_PUBLIC_APP_SHORT_DOMAIN:-localhost}
+  NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:8888}
+  NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+
+  # Cron + workflow shared secret (BullMQ scheduler + signed HTTP fallback)
+  CRON_SECRET: ${CRON_SECRET}
+  ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+  UNSUBSCRIBE_TOKEN_SECRET: ${UNSUBSCRIBE_TOKEN_SECRET:-}
+
+  # Database via planetscale-proxy (HTTP shim over MySQL).
+  DATABASE_URL: "mysql://root:@mysql:3306/planetscale"
+  PLANETSCALE_DATABASE_URL: "http://root:unused@ps-proxy:3900/planetscale"
+
+  # Redis (REST shim) – serves Upstash REST API on top of plain Redis.
+  UPSTASH_REDIS_REST_URL: "http://srh:80"
+  UPSTASH_REDIS_REST_TOKEN: ${SRH_TOKEN:-localtoken}
+  REDIS_URL: "redis://redis:6379"
+
+  # QStash compat – left blank when SELF_HOSTED=1; lib/queue/* uses BullMQ.
+  QSTASH_TOKEN: ""
+  QSTASH_CURRENT_SIGNING_KEY: ""
+  QSTASH_NEXT_SIGNING_KEY: ""
+
+  # ClickHouse (Tinybird replacement)
+  CLICKHOUSE_URL: "http://clickhouse:8123"
+  CLICKHOUSE_DATABASE: "dub"
+  CLICKHOUSE_USER: "dub"
+  CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-dub}
+  TINYBIRD_API_KEY: ""
+  TINYBIRD_API_URL: ""
+
+  # Email – Resend (kept external)
+  RESEND_API_KEY: ${RESEND_API_KEY}
+  RESEND_WEBHOOK_SECRET: ${RESEND_WEBHOOK_SECRET:-}
+
+  # SMTP fallback (mailpit dev / ops can repoint to relay)
+  SMTP_HOST: ${SMTP_HOST:-mailpit}
+  SMTP_PORT: ${SMTP_PORT:-1025}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+
+  # File storage – external S3 (kept external by design).
+  STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID}
+  STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY}
+  STORAGE_ENDPOINT: ${STORAGE_ENDPOINT}
+  STORAGE_BASE_URL: ${STORAGE_BASE_URL}
+  STORAGE_PUBLIC_BUCKET: ${STORAGE_PUBLIC_BUCKET}
+  STORAGE_PRIVATE_BUCKET: ${STORAGE_PRIVATE_BUCKET}
+
+  # Geo lookup (MaxMind GeoLite2 mounted into the container)
+  MAXMIND_DB_PATH: "/geo/GeoLite2-City.mmdb"
+
+  # Optional SaaS – leave blank to disable feature.
+  STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+  STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+  GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+  GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: planetscale
+      MYSQL_ROOT_HOST: "%"
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+    command:
+      - "--max_connections=1000"
+      - "--default-authentication-plugin=mysql_native_password"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  ps-proxy:
+    image: ghcr.io/mattrobenolt/ps-http-sim:latest
+    restart: unless-stopped
+    command:
+      - "-mysql-no-pass"
+      - "-listen-port=3900"
+      - "-mysql-dbname=planetscale"
+      - "-mysql-addr=mysql"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Upstash Redis REST shim – the app talks REST, this proxies to plain Redis.
+  srh:
+    image: hiett/serverless-redis-http:latest
+    restart: unless-stopped
+    environment:
+      SRH_MODE: env
+      SRH_TOKEN: ${SRH_TOKEN:-localtoken}
+      SRH_CONNECTION_STRING: "redis://redis:6379"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: dub
+      CLICKHOUSE_USER: dub
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-dub}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - ./clickhouse/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  mailpit:
+    # Dev convenience – outbound email lands here when SMTP_HOST=mailpit.
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      - "8025:8025"
+
+  migrate:
+    build:
+      context: .
+      target: web
+    command: ["node", "apps/web/scripts/migrate.js"]
+    environment: *web-env
+    depends_on:
+      ps-proxy:
+        condition: service_started
+      mysql:
+        condition: service_healthy
+    restart: "no"
+
+  web:
+    build:
+      context: .
+      target: web
+    restart: unless-stopped
+    environment: *web-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      srh:
+        condition: service_started
+      clickhouse:
+        condition: service_healthy
+    volumes:
+      - ./geo:/geo:ro
+    ports:
+      - "8888:8888"
+
+  worker:
+    build:
+      context: .
+      target: worker
+    restart: unless-stopped
+    environment: *web-env
+    depends_on:
+      web:
+        condition: service_started
+    volumes:
+      - ./geo:/geo:ro
+
+  scheduler:
+    image: aptible/supercronic:latest
+    restart: unless-stopped
+    command: ["/etc/supercronic/crontab"]
+    environment:
+      CRON_SECRET: ${CRON_SECRET}
+      WEB_URL: "http://web:8888"
+    volumes:
+      - ./scheduler/crontab:/etc/supercronic/crontab:ro
+    depends_on:
+      web:
+        condition: service_started
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      APP_DOMAIN: ${NEXT_PUBLIC_APP_DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      web:
+        condition: service_started
+
+volumes:
+  mysql-data:
+  redis-data:
+  clickhouse-data:
+  caddy-data:
+  caddy-config:

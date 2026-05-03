@@ -13,7 +13,7 @@ import { ProgramPartnerLinkSchema } from "@/lib/zod/schemas/programs";
 import { sendBatchEmail } from "@dub/email";
 import PartnerApplicationApproved from "@dub/email/templates/partner-application-approved";
 import { prisma } from "@dub/prisma";
-import { serve } from "@upstash/workflow/nextjs";
+import { serve } from "@/lib/queue/workflow";
 import * as z from "zod/v4";
 
 const payloadSchema = z.object({

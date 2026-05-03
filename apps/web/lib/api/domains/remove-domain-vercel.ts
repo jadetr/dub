@@ -1,7 +1,9 @@
 import { prisma } from "@dub/prisma";
 import { getApexDomain } from "@dub/utils";
+import { features } from "@/lib/self-hosted";
 
 export const removeDomainFromVercel = async (domain: string) => {
+  if (!features.vercelDomains) return { ok: true } as any;
   const apexDomain = getApexDomain(`https://${domain}`);
   const domains = await prisma.domain.findMany({
     where: {

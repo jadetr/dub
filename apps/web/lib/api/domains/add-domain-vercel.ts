@@ -1,4 +1,5 @@
 import { getApexDomain, getDomainWithoutWWW } from "@dub/utils";
+import { features } from "@/lib/self-hosted";
 import { getVercelDomainResponse } from "./get-domain-response";
 import { CustomResponse } from "./utils";
 
@@ -11,6 +12,12 @@ export const addDomainToVercel = async (
   } = {},
 ): Promise<CustomResponse> => {
   domain = domain.toLowerCase();
+
+  // Self-hosted: TLS is managed by Caddy on-demand, DNS is managed by the
+  // operator. Treat the domain as immediately verified.
+  if (!features.vercelDomains) {
+    return { name: domain, verified: true } as unknown as CustomResponse;
+  }
 
   const apexDomain = getApexDomain(`https://${domain}`);
   if (apexDomain !== domain) {

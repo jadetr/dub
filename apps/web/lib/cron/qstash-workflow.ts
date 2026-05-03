@@ -1,9 +1,6 @@
 import { APP_DOMAIN_WITH_NGROK, log } from "@dub/utils";
-import { Client } from "@upstash/workflow";
 
-const client = new Client({
-  token: process.env.QSTASH_TOKEN || "",
-});
+const SELF_HOSTED = process.env.SELF_HOSTED === "1";
 
 const WORKFLOW_RETRIES = 3;
 const WORKFLOW_PARALLELISM = 20;
@@ -21,6 +18,24 @@ export async function triggerWorkflows(
 ) {
   try {
     const workflows = Array.isArray(input) ? input : [input];
+
+    if (SELF_HOSTED) {
+      const { qstash } = await import("@/lib/queue");
+      const results = await Promise.all(
+        workflows.map((wf) =>
+          qstash.publishJSON({
+            url: `${APP_DOMAIN_WITH_NGROK}/api/workflows/${wf.workflowId}`,
+            body: wf.body,
+            retries: WORKFLOW_RETRIES,
+            headers: { authorization: `Bearer ${process.env.CRON_SECRET}` },
+          }),
+        ),
+      );
+      return results;
+    }
+
+    const { Client } = await import("@upstash/workflow");
+    const client = new Client({ token: process.env.QSTASH_TOKEN || "" });
 
     const results = await client.trigger(
       workflows.map((workflow) => ({

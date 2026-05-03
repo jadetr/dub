@@ -9,7 +9,8 @@ import { prisma } from "@dub/prisma";
 import { PrismaClient } from "@dub/prisma/client";
 import { APP_DOMAIN_WITH_NGROK } from "@dub/utils";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
-import { waitUntil } from "@vercel/functions";
+import { waitUntil } from "@/lib/wait-until";
+import { features } from "@/lib/self-hosted";
 import { User, type NextAuthOptions } from "next-auth";
 import { AdapterAccount, AdapterUser } from "next-auth/adapters";
 import { JWT } from "next-auth/jwt";
@@ -84,16 +85,24 @@ export const authOptions: NextAuthOptions = {
         });
       },
     }),
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID as string,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
-      allowDangerousEmailAccountLinking: true,
-    }),
-    GithubProvider({
-      clientId: process.env.GITHUB_CLIENT_ID as string,
-      clientSecret: process.env.GITHUB_CLIENT_SECRET as string,
-      allowDangerousEmailAccountLinking: true,
-    }),
+    ...(features.googleAuth
+      ? [
+          GoogleProvider({
+            clientId: process.env.GOOGLE_CLIENT_ID as string,
+            clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
+            allowDangerousEmailAccountLinking: true,
+          }),
+        ]
+      : []),
+    ...(features.githubAuth
+      ? [
+          GithubProvider({
+            clientId: process.env.GITHUB_CLIENT_ID as string,
+            clientSecret: process.env.GITHUB_CLIENT_SECRET as string,
+            allowDangerousEmailAccountLinking: true,
+          }),
+        ]
+      : []),
     {
       id: "saml",
       name: "BoxyHQ",

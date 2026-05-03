@@ -6,8 +6,13 @@ import {
   getDomainWithoutWWW,
 } from "@dub/utils";
 import { EU_COUNTRY_CODES } from "@dub/utils/src/constants/countries";
-import { geolocation, ipAddress, waitUntil } from "@vercel/functions";
+import { geolocation, ipAddress } from "@vercel/functions";
+import { waitUntil } from "@/lib/wait-until";
+import { extractIp, lookupIp } from "@/lib/geo/maxmind";
+import { chInsert } from "@/lib/clickhouse/client";
 import { userAgent } from "next/server";
+
+const SELF_HOSTED = process.env.SELF_HOSTED === "1";
 import { recordClickCache } from "../api/links/record-click-cache";
 import { ExpandedLink, transformLink } from "../api/links/utils/transform-link";
 import { detectBot } from "../middleware/utils/detect-bot";
@@ -114,19 +119,35 @@ export async function recordClick({
 
   // get continent, region & geolocation data
   // interesting, geolocation().region is Vercel's edge region – NOT the actual region
-  // so we use the x-vercel-ip-country-region to get the actual region
-  const { continent, region } =
-    process.env.VERCEL === "1"
-      ? {
-          continent: req.headers.get("x-vercel-ip-continent"),
-          region: req.headers.get("x-vercel-ip-country-region"),
-        }
-      : LOCALHOST_GEO_DATA;
-
-  const geo =
-    process.env.VERCEL === "1" ? geolocation(req) : LOCALHOST_GEO_DATA;
-
-  const ip = process.env.VERCEL === "1" ? ipAddress(req) : LOCALHOST_IP;
+  // so we use the x-vercel-ip-country-region to get the actual region.
+  // Self-hosted: extract IP from x-forwarded-for and look up via MaxMind.
+  let continent: string | null | undefined;
+  let region: string | null | undefined;
+  let geo: any;
+  let ip: string;
+  if (process.env.VERCEL === "1") {
+    continent = req.headers.get("x-vercel-ip-continent");
+    region = req.headers.get("x-vercel-ip-country-region");
+    geo = geolocation(req);
+    ip = (ipAddress(req) as string) || LOCALHOST_IP;
+  } else if (SELF_HOSTED) {
+    ip = extractIp(req) || LOCALHOST_IP;
+    const lookup = await lookupIp(ip);
+    continent = lookup.continent ?? null;
+    region = lookup.region ?? null;
+    geo = {
+      country: lookup.country,
+      city: lookup.city,
+      latitude: lookup.latitude,
+      longitude: lookup.longitude,
+      region: lookup.region,
+    };
+  } else {
+    continent = LOCALHOST_GEO_DATA.continent;
+    region = LOCALHOST_GEO_DATA.region;
+    geo = LOCALHOST_GEO_DATA;
+    ip = LOCALHOST_IP;
+  }
   const isEuCountry = geo.country && EU_COUNTRY_CODES.includes(geo.country);
 
   const referer = referrer || req.headers.get("referer");
@@ -176,17 +197,21 @@ export async function recordClick({
 
   waitUntil(
     (async () => {
-      const response = await Promise.allSettled([
-        fetchWithRetry(
-          `${process.env.TINYBIRD_API_URL}/v0/events?name=dub_click_events&wait=true`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${process.env.TINYBIRD_API_KEY}`,
+      const ingestClick = SELF_HOSTED
+        ? chInsert("dub_click_events", clickData as any)
+        : fetchWithRetry(
+            `${process.env.TINYBIRD_API_URL}/v0/events?name=dub_click_events&wait=true`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${process.env.TINYBIRD_API_KEY}`,
+              },
+              body: JSON.stringify(clickData),
             },
-            body: JSON.stringify(clickData),
-          },
-        ).then((res) => res.json()),
+          ).then((res) => res.json());
+
+      const response = await Promise.allSettled([
+        ingestClick,
 
         // cache the recorded click for the corresponding IP address in Redis for 1 hour
         recordClickCache.set({ domain, key, identityHash, clickId }),

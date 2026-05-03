@@ -1,0 +1,35 @@
+# Self-hosted Dub reverse proxy.
+# Set APP_DOMAIN in .env to a real hostname for ACME-issued TLS, or leave the
+# default "localhost" for an internally-trusted cert.
+
+{
+    # On-demand TLS allows custom short-link domains pointed at this Caddy.
+    on_demand_tls {
+        ask http://web:8888/api/domains/verify-on-demand
+    }
+}
+
+(common) {
+    encode gzip zstd
+    header -Server
+}
+
+# Default site: the app itself
+{$APP_DOMAIN:localhost} {
+    import common
+    tls internal
+    reverse_proxy web:8888
+}
+
+# Wildcard for any custom short-link domain – on-demand cert.
+:443 {
+    import common
+    tls {
+        on_demand
+    }
+    reverse_proxy web:8888
+}
+
+:80 {
+    redir https://{host}{uri} permanent
+}

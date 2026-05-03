@@ -20,6 +20,20 @@ export const verifyQstashSignature = async ({
     return;
   }
 
+  // Self-hosted: the BullMQ worker signs requests with CRON_SECRET as a
+  // bearer instead of QStash signatures.
+  if (process.env.SELF_HOSTED === "1") {
+    const auth = req.headers.get("authorization");
+    const ok = auth === `Bearer ${process.env.CRON_SECRET}`;
+    if (!ok) {
+      throw new DubApiError({
+        code: "unauthorized",
+        message: "Missing or invalid CRON_SECRET bearer.",
+      });
+    }
+    return;
+  }
+
   const signature = req.headers.get("Upstash-Signature");
 
   if (!signature) {

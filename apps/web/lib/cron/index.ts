@@ -1,8 +1,3 @@
-import { Client } from "@upstash/qstash";
-
-export const qstash = new Client({
-  token: process.env.QSTASH_TOKEN || "",
-});
-
-// Default batch size for cron jobs that process records in batches
-export const CRON_BATCH_SIZE = 100;
+// Re-export the QStash-compatible queue. When SELF_HOSTED=1, this resolves to
+// a BullMQ-backed adapter; otherwise to the real Upstash @upstash/qstash Client.
+export { qstash, CRON_BATCH_SIZE } from "@/lib/queue";
