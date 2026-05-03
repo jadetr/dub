@@ -54,8 +54,8 @@ export const GET = withWorkspace(
 
     if (groupBy) {
       const dates = [...new Set(response.data.map((d) => d.date))];
-      const groupIds: string[] = [
-        ...new Set(response.data.map((d) => String(d[groupBy] ?? ""))),
+      const groupIds = [
+        ...new Set(response.data.map((d) => d[groupBy] ?? "")),
       ];
 
       const where = {

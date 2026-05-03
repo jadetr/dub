@@ -58,8 +58,11 @@ class SelfHostedTb {
   }
 }
 
-export const tb: any = SELF_HOSTED
-  ? new SelfHostedTb()
+// Type as `Tinybird` so call sites get the strict typings from
+// @chronark/zod-bird (response.data inferred from the zod schema, etc.).
+// SelfHostedTb is structurally compatible for the methods used.
+export const tb: Tinybird = SELF_HOSTED
+  ? (new SelfHostedTb() as unknown as Tinybird)
   : new Tinybird({
       token: process.env.TINYBIRD_API_KEY as string,
       baseUrl: process.env.TINYBIRD_API_URL as string,
