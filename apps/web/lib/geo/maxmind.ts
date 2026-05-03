@@ -3,20 +3,22 @@
 // every lookup returns the localhost defaults so the rest of the pipeline
 // keeps working.
 
-import type { Reader, CityResponse } from "@maxmind/geoip2-node";
+import type { ReaderModel } from "@maxmind/geoip2-node";
 import { LOCALHOST_GEO_DATA } from "@dub/utils";
 
-let reader: Reader<CityResponse> | null = null;
+// @maxmind/geoip2-node v5: Reader.open() resolves to a non-generic ReaderModel.
+// The older Reader<CityResponse>/CityResponse types were removed.
+let reader: ReaderModel | null = null;
 let triedOpen = false;
 
-async function getReader(): Promise<Reader<CityResponse> | null> {
+async function getReader(): Promise<ReaderModel | null> {
   if (reader || triedOpen) return reader;
   triedOpen = true;
   const path = process.env.MAXMIND_DB_PATH;
   if (!path) return null;
   try {
     const { Reader } = await import("@maxmind/geoip2-node");
-    reader = await Reader.open<CityResponse>(path);
+    reader = await Reader.open(path);
   } catch (err) {
     console.warn(`[geo] MaxMind DB not available at ${path}:`, err);
     reader = null;
