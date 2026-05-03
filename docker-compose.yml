@@ -153,7 +153,15 @@ services:
     build:
       context: .
       target: web
-    command: ["node", "apps/web/scripts/migrate.js"]
+    # @dub/prisma uses `prisma db push` (no migrations dir); the CLI is bundled
+    # at /app/packages/prisma/node_modules/.bin/prisma in the web image.
+    command:
+      - "/app/packages/prisma/node_modules/.bin/prisma"
+      - "db"
+      - "push"
+      - "--schema=/app/packages/prisma/schema"
+      - "--skip-generate"
+      - "--accept-data-loss"
     environment: *web-env
     depends_on:
       ps-proxy:

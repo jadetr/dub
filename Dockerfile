@@ -81,6 +81,14 @@ COPY --from=builder /repo/apps/web/public ./apps/web/public
 # Prisma engines + generated client (already inside node_modules of standalone)
 COPY --from=builder /repo/packages/prisma ./packages/prisma
 
+# Prisma CLI for the migrate compose service (`prisma db push`). The standalone
+# trace doesn't include the CLI since no app code imports it. The pnpm bin
+# symlink at /app/packages/prisma/node_modules/prisma resolves up to
+# /app/node_modules/.pnpm/prisma@*; mirror that path here (NOT /repo/...,
+# which only existed in the builder stage).
+COPY --from=builder /repo/node_modules/.pnpm/prisma@6.19.1_typescript@5.2.2 /app/node_modules/.pnpm/prisma@6.19.1_typescript@5.2.2
+COPY --from=builder /repo/node_modules/.pnpm/@prisma+engines@6.19.1 /app/node_modules/.pnpm/@prisma+engines@6.19.1
+
 # Optional: bake GeoLite2 if available (mounted at /geo at runtime otherwise)
 RUN mkdir -p /geo
 
