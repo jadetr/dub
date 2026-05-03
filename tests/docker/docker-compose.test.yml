@@ -1,0 +1,41 @@
+# Test compose overlay.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f tests/docker/docker-compose.test.yml \
+#     run --rm tests
+#
+# The overlay reuses the production redis/srh/clickhouse/mysql/ps-proxy
+# services from docker-compose.yml so we exercise the same image versions and
+# init scripts. The `tests` service joins the same network and points its env
+# at those services by hostname.
+
+services:
+  tests:
+    build:
+      context: .
+      dockerfile: tests/docker/Dockerfile
+    environment:
+      NODE_ENV: test
+      SELF_HOSTED: "1"
+      REDIS_URL: redis://redis:6379
+      SRH_URL: http://srh:80
+      SRH_TOKEN: ${SRH_TOKEN:-localtoken}
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_DATABASE: dub
+      CLICKHOUSE_USER: dub
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-dub}
+      PLANETSCALE_DATABASE_URL: http://root:unused@ps-proxy:3900/planetscale
+      # Optional: set WEB_URL to enable the web-smoke suite
+      WEB_URL: ${WEB_URL:-}
+      CRON_SECRET: ${CRON_SECRET:-}
+      NEXT_PUBLIC_APP_DOMAIN: ${NEXT_PUBLIC_APP_DOMAIN:-localhost}
+      # If ps-proxy can't be pulled in this environment
+      SKIP_PS_PROXY: ${SKIP_PS_PROXY:-0}
+    depends_on:
+      redis:
+        condition: service_healthy
+      srh:
+        condition: service_started
+      clickhouse:
+        condition: service_healthy
+    profiles: ["test"]

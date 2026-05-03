@@ -1,0 +1,24 @@
+{
+  "name": "@dub/tests",
+  "version": "0.0.1",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "test": "pnpm test:unit && pnpm test:integration",
+    "test:unit": "vitest run --config vitest.config.unit.ts",
+    "test:integration": "vitest run --config vitest.config.integration.ts",
+    "test:e2e": "vitest run --config vitest.config.e2e.ts",
+    "test:watch": "vitest --config vitest.config.unit.ts"
+  },
+  "dependencies": {
+    "@upstash/qstash": "^2.8.2",
+    "bullmq": "^5.21.0",
+    "ioredis": "^5.4.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "vite-tsconfig-paths": "5.1.4",
+    "vitest": "4.0.8"
+  }
+}

@@ -3,3 +3,4 @@ packages:
   - "apps/web/.react-email"
   - "packages/*"
   - "packages/embeds/*"
+  - "tests"
