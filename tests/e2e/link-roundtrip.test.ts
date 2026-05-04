@@ -68,9 +68,14 @@ d("e2e: link roundtrip (create → click → stat)", () => {
     expect(await clickCount(link.id)).toBe(0);
 
     // ── 2. unauthenticated browser hits the short URL ─────────────────────
+    // The middleware uses the Host header to look the link up by (domain,key).
+    // From inside the test container we hit `http://web:8888/...` (compose
+    // hostname), so override Host so the lookup matches the configured
+    // SHORT_DOMAIN that the link was created on.
     const clickRes = await fetch(`${WEB_URL}/${link.key}`, {
       redirect: "manual",
       headers: {
+        host: SHORT_DOMAIN,
         // No cookies, no auth — represent a fresh visitor.
         "user-agent":
           "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 dub-e2e-test",
