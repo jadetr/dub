@@ -94,6 +94,18 @@ CMD ["node", "apps/web/server.js"]
 # it). Build a separate small image off the deps stage that has the full pnpm
 # node_modules so `prisma db push` and its transitive deps resolve.
 FROM node:20-bookworm-slim AS migrate
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates openssl \
+    && rm -rf /var/lib/apt/lists/*
+COPY tests/docker/extra-ca/ /usr/local/share/ca-certificates/extra/
+RUN if ls /usr/local/share/ca-certificates/extra/*.crt >/dev/null 2>&1; then update-ca-certificates; fi
+ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+# @prisma/engines bundles only debian-openssl-3.0.x binaries; prisma's
+# platform detection sometimes defaults to "openssl-1.1.x" and tries to
+# download the missing binary at runtime (which fails through TLS-
+# intercepting egress proxies). Point at the bundled 3.0.x binaries.
+ENV PRISMA_QUERY_ENGINE_LIBRARY=/repo/node_modules/.pnpm/@prisma+engines@6.19.1/node_modules/@prisma/engines/libquery_engine-debian-openssl-3.0.x.so.node \
+    PRISMA_SCHEMA_ENGINE_BINARY=/repo/node_modules/.pnpm/@prisma+engines@6.19.1/node_modules/@prisma/engines/schema-engine-debian-openssl-3.0.x
 WORKDIR /repo
 COPY --from=deps /repo /repo
 COPY --from=builder /repo/packages/prisma /repo/packages/prisma
