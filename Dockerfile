@@ -138,3 +138,24 @@ COPY --from=builder /repo/package.json /repo/pnpm-workspace.yaml /repo/pnpm-lock
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["node", "apps/worker/dist/index.js"]
+
+# ----- Stage 5: dev (hot-reload via next dev + bind-mount) -------------------
+# Used by docker-compose.dev.yml. The host repo is bind-mounted over /repo at
+# runtime, and `next dev`'s HMR picks up edits without a docker rebuild. No
+# app code is baked in here — the image is just the toolchain (node, pnpm,
+# openssl, certs).
+FROM node:20-bookworm-slim AS dev
+ENV PNPM_HOME=/pnpm
+ENV PATH=$PNPM_HOME:$PATH
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates openssl tini git \
+    && rm -rf /var/lib/apt/lists/*
+COPY tests/docker/extra-ca/ /usr/local/share/ca-certificates/extra/
+RUN if ls /usr/local/share/ca-certificates/extra/*.crt >/dev/null 2>&1; then update-ca-certificates; fi
+ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
+WORKDIR /repo
+EXPOSE 8888
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["pnpm", "--filter=web", "dev"]

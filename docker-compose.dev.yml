@@ -1,0 +1,70 @@
+# Dev overlay: hot-reload web via `next dev` with the host repo bind-mounted.
+#
+# Edits on the host (lib/, app/, packages/*) are picked up by Next's HMR —
+# no docker rebuild needed for app source changes. Only schema/Dockerfile/
+# package.json changes require restarting the dev container.
+#
+# First start: pnpm installs into a container-local volume (~2-5 min).
+#               That volume persists across `docker compose down`/`up` cycles.
+# Subsequent starts: deps cached, just `next dev` startup (~10s).
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# To force a fresh pnpm install (e.g. after pnpm-lock.yaml changes):
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml \
+#     down -v   # nukes the named volumes below
+#
+# Compose merge rules: command/build are replaced from this file, while
+# environment, depends_on, ports and volumes from the production `web`
+# service are inherited/appended. So this overlay only needs to express
+# the dev-specific bits.
+
+services:
+  web:
+    build:
+      target: dev
+    image: dub-web-dev
+    # Bootstrap step writes a sentinel under node_modules so subsequent
+    # `up` cycles skip the install. `prisma generate` is cheap and idempotent.
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        if [ ! -f /repo/node_modules/.dev-installed ]; then
+          echo "::: dev: installing deps (one-shot, ~2-5min)"
+          pnpm install \
+            --filter=!dub-hubspot-app \
+            --filter=!com.example.dub \
+            --filter=!dub-cli
+          touch /repo/node_modules/.dev-installed
+        fi
+        echo "::: dev: regenerating prisma client"
+        pnpm --filter=@dub/prisma generate
+        echo "::: dev: starting next dev on :8888"
+        exec pnpm --filter=web dev
+    environment:
+      NODE_ENV: development
+      # Bind-mount file watching across the docker fs sometimes misses
+      # events; fall back to polling. Cheap on a small monorepo.
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
+    volumes:
+      # Bind-mount the entire host repo into the container. Edits made on
+      # the host appear inside immediately and Next's HMR reloads.
+      - .:/repo
+      # Container-local node_modules volumes shadow the host's. This avoids
+      # clobbering platform-specific binaries (sharp, prisma engines, …)
+      # that the host install may have built for a different OS/arch.
+      - dub_node_modules:/repo/node_modules
+      - dub_web_node_modules:/repo/apps/web/node_modules
+      - dub_worker_node_modules:/repo/apps/worker/node_modules
+      # Next's build cache — also kept out of the bind mount for speed.
+      - dub_next_cache:/repo/apps/web/.next
+
+volumes:
+  dub_node_modules:
+  dub_web_node_modules:
+  dub_worker_node_modules:
+  dub_next_cache:
