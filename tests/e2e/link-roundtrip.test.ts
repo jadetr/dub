@@ -1,4 +1,41 @@
 import { describe, it, expect } from "vitest";
+import * as http from "node:http";
+
+// Tiny http GET helper — undici (Node's `fetch`) treats `Host` as a forbidden
+// header and silently strips it, so the middleware can't be coaxed into
+// looking the link up under SHORT_DOMAIN via fetch alone. Fall back to
+// node:http where Host is settable.
+function nodeGet(
+  url: string,
+  hostHeader: string,
+): Promise<{ status: number; location: string | null }> {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const req = http.request(
+      {
+        hostname: u.hostname,
+        port: u.port,
+        path: u.pathname + u.search,
+        method: "GET",
+        headers: {
+          Host: hostHeader,
+          "User-Agent":
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 dub-e2e-test",
+        },
+      },
+      (res) => {
+        // Drain the body so the socket is released.
+        res.resume();
+        resolve({
+          status: res.statusCode ?? 0,
+          location: (res.headers.location as string | undefined) ?? null,
+        });
+      },
+    );
+    req.on("error", reject);
+    req.end();
+  });
+}
 
 // E2E: anonymous link create → unauthenticated click → admin-side stat read.
 // Runs against the live `web` container plus clickhouse. Skipped unless
@@ -70,22 +107,14 @@ d("e2e: link roundtrip (create → click → stat)", () => {
     // ── 2. unauthenticated browser hits the short URL ─────────────────────
     // The middleware uses the Host header to look the link up by (domain,key).
     // From inside the test container we hit `http://web:8888/...` (compose
-    // hostname), so override Host so the lookup matches the configured
-    // SHORT_DOMAIN that the link was created on.
-    const clickRes = await fetch(`${WEB_URL}/${link.key}`, {
-      redirect: "manual",
-      headers: {
-        host: SHORT_DOMAIN,
-        // No cookies, no auth — represent a fresh visitor.
-        "user-agent":
-          "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 dub-e2e-test",
-      },
-    });
+    // hostname), so we have to send Host: <SHORT_DOMAIN> so the lookup
+    // matches the domain the link was created on.
+    const clickRes = await nodeGet(`${WEB_URL}/${link.key}`, SHORT_DOMAIN);
     expect(
       [301, 302, 307, 308],
       `expected redirect status, got ${clickRes.status}`,
     ).toContain(clickRes.status);
-    expect(clickRes.headers.get("location")).toBe(destination);
+    expect(clickRes.location).toBe(destination);
 
     // ── 3. admin-side stat check: verify the click was recorded ───────────
     // recordClick runs inside waitUntil(), so the row may land slightly
