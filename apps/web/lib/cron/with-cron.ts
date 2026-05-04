@@ -1,5 +1,6 @@
 import { APP_DOMAIN_WITH_NGROK, getSearchParams, log } from "@dub/utils";
 import { logAndRespond } from "app/(ee)/api/cron/utils";
+import { DubApiError, handleAndReturnErrorResponse } from "../api/errors";
 import { logger, withAxiomBodyLog } from "../axiom/server";
 import { verifyQstashSignature } from "./verify-qstash";
 import { verifyVercelSignature } from "./verify-vercel";
@@ -67,6 +68,12 @@ export const withCron = (handler: WithCronHandler) => {
           message: `Cron job "${url.pathname}" failed during execution. Error: ${errorMessage}`,
           type: "errors",
         });
+
+        // Auth failures (DubApiError unauthorized/forbidden) should return
+        // 401/403 instead of being collapsed to 500.
+        if (error instanceof DubApiError) {
+          return handleAndReturnErrorResponse(error);
+        }
 
         return logAndRespond(errorMessage, { status: 500 });
       }
