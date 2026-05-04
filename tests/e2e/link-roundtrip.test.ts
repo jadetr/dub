@@ -52,7 +52,11 @@ function nodeGet(
 //      in link statistics" path without needing a workspace/API token.
 
 const WEB_URL = process.env.WEB_URL;
-const SHORT_DOMAIN = process.env.NEXT_PUBLIC_APP_SHORT_DOMAIN || "localhost";
+// Falls back to s.localhost (run.sh's default) — anything OTHER than a
+// hostname in APP_HOSTNAMES (which hardcodes "localhost"/"localhost:8888")
+// so the middleware sends the click to LinkMiddleware, not AppMiddleware.
+const SHORT_DOMAIN =
+  process.env.NEXT_PUBLIC_APP_SHORT_DOMAIN || "s.localhost";
 
 const skip = !WEB_URL;
 const d = skip ? describe.skip : describe;

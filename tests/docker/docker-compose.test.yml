@@ -29,6 +29,7 @@ services:
       WEB_URL: ${WEB_URL:-}
       CRON_SECRET: ${CRON_SECRET:-}
       NEXT_PUBLIC_APP_DOMAIN: ${NEXT_PUBLIC_APP_DOMAIN:-localhost}
+      NEXT_PUBLIC_APP_SHORT_DOMAIN: ${NEXT_PUBLIC_APP_SHORT_DOMAIN:-s.localhost}
       # If ps-proxy can't be pulled in this environment
       SKIP_PS_PROXY: ${SKIP_PS_PROXY:-0}
     depends_on:

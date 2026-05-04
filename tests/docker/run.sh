@@ -22,10 +22,16 @@ SUITE="${1:-all}"
 : "${STORAGE_BASE_URL:=http://localhost:9000}"
 : "${STORAGE_PUBLIC_BUCKET:=dub}"
 : "${STORAGE_PRIVATE_BUCKET:=dub-private}"
+# Use a short domain that doesn't collide with APP_HOSTNAMES (which hardcodes
+# "localhost"/"localhost:8888"). Without this, link clicks under the default
+# `localhost` short domain are intercepted by AppMiddleware → /login.
+: "${NEXT_PUBLIC_APP_DOMAIN:=localhost}"
+: "${NEXT_PUBLIC_APP_SHORT_DOMAIN:=s.localhost}"
 export NEXTAUTH_SECRET CRON_SECRET ENCRYPTION_KEY UNSUBSCRIBE_TOKEN_SECRET \
        SRH_TOKEN CLICKHOUSE_PASSWORD RESEND_API_KEY \
        STORAGE_ACCESS_KEY_ID STORAGE_SECRET_ACCESS_KEY STORAGE_ENDPOINT \
-       STORAGE_BASE_URL STORAGE_PUBLIC_BUCKET STORAGE_PRIVATE_BUCKET
+       STORAGE_BASE_URL STORAGE_PUBLIC_BUCKET STORAGE_PRIVATE_BUCKET \
+       NEXT_PUBLIC_APP_DOMAIN NEXT_PUBLIC_APP_SHORT_DOMAIN
 
 COMPOSE_FILES=(-f docker-compose.yml -f tests/docker/docker-compose.test.yml)
 PROFILE=(--profile test)
