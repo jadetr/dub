@@ -82,20 +82,25 @@ COPY --from=builder /repo/apps/web/public ./apps/web/public
 # Prisma engines + generated client (already inside node_modules of standalone)
 COPY --from=builder /repo/packages/prisma ./packages/prisma
 
-# Prisma CLI for the migrate compose service (`prisma db push`). The standalone
-# trace doesn't include the CLI since no app code imports it. The pnpm bin
-# symlink at /app/packages/prisma/node_modules/prisma resolves up to
-# /app/node_modules/.pnpm/prisma@*; mirror that path here (NOT /repo/...,
-# which only existed in the builder stage).
-COPY --from=builder /repo/node_modules/.pnpm/prisma@6.19.1_typescript@5.2.2 /app/node_modules/.pnpm/prisma@6.19.1_typescript@5.2.2
-COPY --from=builder /repo/node_modules/.pnpm/@prisma+engines@6.19.1 /app/node_modules/.pnpm/@prisma+engines@6.19.1
-
 # Optional: bake GeoLite2 if available (mounted at /geo at runtime otherwise)
 RUN mkdir -p /geo
 
 EXPOSE 8888
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["node", "apps/web/server.js"]
+
+# ----- Stage 3b: migrate -----------------------------------------------------
+# Standalone-traced web image doesn't ship the prisma CLI (no app code imports
+# it). Build a separate small image off the deps stage that has the full pnpm
+# node_modules so `prisma db push` and its transitive deps resolve.
+FROM node:20-bookworm-slim AS migrate
+WORKDIR /repo
+COPY --from=deps /repo /repo
+COPY --from=builder /repo/packages/prisma /repo/packages/prisma
+ENTRYPOINT []
+CMD ["/repo/packages/prisma/node_modules/.bin/prisma", "db", "push", \
+     "--schema=/repo/packages/prisma/schema", \
+     "--skip-generate", "--accept-data-loss"]
 
 # ----- Stage 4: worker -------------------------------------------------------
 FROM node:20-bookworm-slim AS worker
